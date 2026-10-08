@@ -1,4 +1,5 @@
 import os
+import warnings
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
@@ -93,11 +94,19 @@ def _render_word_layout(word_weights, sizes, colors, question_text, image_width,
     placements = []
     bottom = baseline
     for (word, _), size, color in zip(word_weights, sizes, colors):
-        font = _get_font(font_path, int(size))
+        size = int(size)
+        font = _get_font(font_path, size)
         bbox = measure.textbbox((0, 0), word, font=font)
         width = bbox[2] - bbox[0]
+        # A token longer than the line (a URL, a row of underscores) is drawn
+        # at a smaller size so it stays whole and inside the page.
+        while width > usable_width and size > 1:
+            size = max(1, min(size - 1, size * usable_width // width))
+            font = _get_font(font_path, size)
+            bbox = measure.textbbox((0, 0), word, font=font)
+            width = bbox[2] - bbox[0]
         if width > usable_width:
-            raise ValueError("A word exceeds the available width; increase image_width or reduce font sizes")
+            raise ValueError("A word exceeds the available width at every font size; increase image_width")
         if x + width > image_width - margin:
             x = margin
             baseline += line_height
@@ -189,11 +198,12 @@ def render_tsvr_page(word_weights, n_words_budget, image_width=1024,
 
     Selects the top-`n_words_budget` words by weight (preserving original
     reading order), then lays them out on a fixed-aspect canvas of
-    `image_width x image_width*page_aspect`. Font size is auto-shrunk so
-    all kept words fit — guaranteeing the output is a page-shaped image
-    DeepSeek-OCR can actually read (vs. the 1:100 scrolls produced by
-    `render_tsvr_image` on long contracts, which get crushed during the
-    model's internal resize to its patch grid).
+    `image_width x image_width*page_aspect`. Font size is shrunk, down to
+    `s_min`, until the kept words fit, so the output stays page-shaped
+    (vs. the 1:100 scrolls produced by `render_tsvr_image` on long
+    contracts, which get crushed during the model's internal resize to its
+    patch grid). If the kept words do not fit even at `s_min`, the words
+    that overflow the page are not drawn and a RuntimeWarning is raised.
 
     The kept words are still coloured by topic/saliency exactly like
     `render_img`, so DeepSeek-OCR sees the same visual salience cues.
@@ -267,6 +277,7 @@ def render_tsvr_page(word_weights, n_words_budget, image_width=1024,
 
     x = margin
     baseline = margin + font_size
+    n_drawn = 0
     for (word, _), p, tid in zip(kept, phi, topic_ids):
         bbox = draw.textbbox((0, 0), word, font=font)
         w = bbox[2] - bbox[0]
@@ -274,10 +285,16 @@ def render_tsvr_page(word_weights, n_words_budget, image_width=1024,
             x = margin
             baseline += line_h
             if baseline + 4 > canvas_h - margin:
-                break  # ran out of page (shouldn't happen after binary search)
+                break  # page is full even at s_min
         color = _weight_to_color(float(p), topic_id=tid)
         draw.text((x, baseline), word, font=font, fill=color, anchor='ls')
         x += w + space_w
+        n_drawn += 1
+    if n_drawn < len(kept):
+        warnings.warn(
+            f"render_tsvr_page: only {n_drawn} of {len(kept)} budgeted words fit on the page "
+            f"at s_min={s_min}; the remaining words were not rendered",
+            RuntimeWarning, stacklevel=2)
     return img
 
 def visualize_single_attention(word_weights, output_path):

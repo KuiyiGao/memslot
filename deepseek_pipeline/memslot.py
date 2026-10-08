@@ -85,11 +85,12 @@ class MemSlotSaliency:
     def __init__(
         self,
         backbone_name: str = "roberta-base",
-        config: MemSlotConfig = MemSlotConfig(),
+        config: Optional[MemSlotConfig] = None,
         device: str = "cuda",
     ):
         from transformers import AutoModel, AutoTokenizer
 
+        config = config if config is not None else MemSlotConfig()
         self.cfg = config
         self.device = device
         self.tokenizer = AutoTokenizer.from_pretrained(backbone_name, use_fast=True, add_prefix_space=True)

@@ -8,11 +8,13 @@ addict
 easydict
 Pillow
 matplotlib
+scipy
 seaborn
 pandas
 requests
 tqdm
-# Install AFTER torch, with: pip install flash-attn==2.7.3 --no-build-isolation
-flash-attn==2.7.3
+# flash-attn is not needed: DeepSeekOCRCompressor defaults to PyTorch SDPA attention,
+# and the notebooks do not install it. Optional, CUDA only:
+#   pip install flash-attn==2.7.3 --no-build-isolation
 
 numpy>=1.24

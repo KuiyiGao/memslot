@@ -1,4 +1,5 @@
 import unittest
+import warnings
 from unittest.mock import patch
 
 import numpy as np
@@ -10,7 +11,7 @@ except ModuleNotFoundError as error:
         raise
     render_dependencies_available = False
 else:
-    from render.render import render_img, render_img_tiered
+    from render.render import render_img, render_img_tiered, render_tsvr_page
     render_dependencies_available = True
 
 
@@ -62,11 +63,15 @@ class RenderLayoutTests(unittest.TestCase):
             self.assertEqual(image.size, (220, 200))
             self.assertTrue((np.asarray(image) == 255).all())
 
-    def test_overwide_word_requests_explicit_layout_change(self):
-        words = [("pneumonoultramicroscopicsilicovolcanoconiosis", 0.5)]
-        for renderer, options in ((render_img, {}), (render_img_tiered, {"tiers": [2]})):
-            with self.subTest(renderer=renderer.__name__), self.assertRaisesRegex(ValueError, "increase image_width or reduce font sizes"):
-                renderer(words, image_width=220, **options)
+    def test_overwide_word_is_shrunk_to_fit_the_line(self):
+        words = [("before", 0.5), ("pneumonoultramicroscopicsilicovolcanoconiosis", 0.5), ("after", 0.5)]
+        for renderer, options in ((render_img, {}), (render_img_tiered, {"tiers": [2, 2, 2]})):
+            with self.subTest(renderer=renderer.__name__):
+                image, boxes = self.capture_render(renderer, words, image_width=220, **options)
+                self.assert_words_visible(image, boxes, [word for word, _ in words])
+                self.assertEqual(image.width, 220)
+                heights = {word: bounds[3] - bounds[1] for word, bounds in boxes}
+                self.assertLess(heights[words[1][0]], heights["before"])
 
     def test_overwide_header_is_rejected(self):
         words = [("term", 0.5)]
@@ -85,6 +90,16 @@ class RenderLayoutTests(unittest.TestCase):
         for tiers in ([0], [0, 1, 2], [0, 3], [0, 1.5], [0, 256]):
             with self.subTest(tiers=tiers), self.assertRaises(ValueError):
                 render_img_tiered(words, tiers)
+
+    def test_page_render_warns_when_budgeted_words_overflow(self):
+        words = [(f"Term{index:03}", index / 399) for index in range(400)]
+        with self.assertWarnsRegex(RuntimeWarning, "budgeted words fit"):
+            _, boxes = self.capture_render(render_tsvr_page, words, n_words_budget=400, image_width=220)
+        self.assertLess(len(boxes), 400)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            _, boxes = self.capture_render(render_tsvr_page, words[:10], n_words_budget=10, image_width=220)
+        self.assertEqual([word for word, _ in boxes], [word for word, _ in words[:10]])
 
 
 if __name__ == "__main__":

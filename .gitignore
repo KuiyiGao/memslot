@@ -9,3 +9,10 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+
+# Notebook and pipeline outputs
+.ipynb_checkpoints/
+runs/
+notebooks_workdir/
+ocr_out/
+*.pt

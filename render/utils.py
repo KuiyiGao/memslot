@@ -310,8 +310,7 @@ def stitch_and_pool_saliency_v3(full_context, chunks_data, sigma=0.8,
         for p, (start, end), seq_id in zip(chunk['probs'], chunk['offsets'], chunk['sequence_ids']):
             if seq_id == 1 and start < end and start < len(full_context):
                 e = min(end, len(full_context))
-                if float(p) > char_max[start]:
-                    np.maximum(char_max[start:e], float(p), out=char_max[start:e])
+                np.maximum(char_max[start:e], float(p), out=char_max[start:e])
     valid = np.isfinite(char_max)
     char_probs[valid] = char_max[valid]
     char_probs = np.nan_to_num(char_probs, nan=float(np.nanmin(char_probs[valid])) if valid.any() else 0.0)
@@ -352,8 +351,7 @@ def stitch_and_smooth_saliency(full_context, chunks_data, sigma=2.0):
         for p, (start, end), seq_id in zip(chunk['probs'], chunk['offsets'], chunk['sequence_ids']):
             if seq_id == 1 and start < end and start < len(full_context):
                 safe_end = min(end, len(full_context))
-                if p > np.max(char_probs[start:safe_end]):
-                    char_probs[start:safe_end] = p
+                np.maximum(char_probs[start:safe_end], float(p), out=char_probs[start:safe_end])
     words, word_probs = [], []
     for match in re.finditer(r'\S+', full_context):
         s, e = match.span()
